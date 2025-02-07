@@ -1,0 +1,188 @@
+task: S2T
+data:
+  translate: true
+  input_data: feature
+  input_streams:
+  - keypoint
+  - rgb
+  dataset_name: csl-daily
+  keypoint_file: data/csl-daily/csl-daily-keypoints.pkl
+  train: data/csl-daily/csl-daily.train 
+  dev: data/csl-daily/csl-daily.dev
+  test: data/csl-daily/csl-daily.test
+  dev_head_keypoint_input:   experiments/outputs/TwoStream/csl-daily_keypoint/extract_feature/head_keypoint_input/dev.pkl
+  test_head_keypoint_input:  experiments/outputs/TwoStream/csl-daily_keypoint/extract_feature/head_keypoint_input/test.pkl
+  train_head_keypoint_input: experiments/outputs/TwoStream/csl-daily_keypoint/extract_feature/head_keypoint_input/train.pkl
+  dev_head_rgb_input:   experiments/outputs/TwoStream/csl-daily_video/csl-daily_s2g/extract_features/head_rgb_input/dev.pkl
+  test_head_rgb_input:  experiments/outputs/TwoStream/csl-daily_video/csl-daily_s2g/extract_features/head_rgb_input/test.pkl
+  train_head_rgb_input: experiments/outputs/TwoStream/csl-daily_video/csl-daily_s2g/extract_features/head_rgb_input/train.pkl
+  
+  level: char
+  max_sent_length: 400
+  txt_lowercase: true
+  use_keypoints:
+  - pose
+  - mouth_half
+  - hand
+  - face_others_1_3
+testing:
+  cfg:
+    recognition:
+      beam_size: 1
+    translation:
+      length_penalty: 1
+      max_length: 500
+      num_beams: 5
+training:
+  batch_size: 16
+  keep_last_ckpts: 2
+  model_dir: experiments/outputs/TwoStream/csl-daily_s2t_fusion
+  num_workers: 8
+  optimization:
+    betas:
+    - 0.9
+    - 0.998
+    learning_rate:
+      default: 0.0001
+      translation: 5.0e-6
+      mapper: 0.0001
+    optimizer: Adam
+    scheduler: cosineannealing
+    t_max: 40
+    weight_decay: 0.001
+  overwrite: true
+  random_seed: 201
+  shuffle: true
+  total_epoch: 40
+  validation:
+    cfg:
+      recognition:
+        beam_size: 1
+      translation:
+        length_penalty: 1
+        max_length: 60
+        num_beams: 5
+    freq: 500
+    unit: epoch
+    valid_start_step: 4000
+    valid_start_epoch: 0
+  amp: true
+model:
+  mode: hyper
+  recognition_weight: 0.0
+  translation_weight: 1.0
+  RecognitionNetwork:
+    pretrained_path_rgb: experiments/outputs/TwoStream/csl-daily_video/csl-daily_s2g/ckpts/best.ckpt
+    pretrained_path_keypoint: experiments/outputs/TwoStream/csl-daily_keypoint/ckpts/best.ckpt
+    freeze: false
+    GlossTokenizer:
+      gloss2id_file:  data/csl-daily/gloss2ids.pkl
+    fuse_method: doublehead_dynamic_bilateral
+    gloss_feature_ensemble: fuse_gloss_probabilities
+    heatmap_cfg:
+      input_size: 112
+      map_size:
+      - 170
+      - 170
+      raw_size:
+      - 512
+      - 512
+      sigma: 8
+      threshold: 0.5
+    keypoint_s3d:
+      freeze_block: 0
+      in_channel: 79
+      pretrained_ckpt: pretrained_models/slt/s3ds_actioncls_ckpt
+      use_block: 4
+    s3d:
+      freeze_block: 1
+      pretrained_ckpt: pretrained_models/slt/s3ds_actioncls_ckpt
+      use_block: 4
+    visual_head:
+      freeze: false
+      ff_kernelsize:
+      - 3
+      - 3
+      ff_size: 2048
+      hidden_size: 512
+      input_size: 832
+      pe: true
+
+  TranslationNetwork:
+    GlossEmbedding:
+      gloss2embed_file: pretrained_models/slt/mBart_zh/gloss_embeddings.bin 
+    GlossTokenizer:
+      gloss2id_file: pretrained_models/slt/mBart_zh/gloss2ids.pkl 
+      src_lang: zh_CSL
+    TextTokenizer:
+      pretrained_model_name_or_path: pretrained_models/slt/mBart_zh/ 
+      pruneids_file: pretrained_models/slt/mBart_zh/old2new_vocab.pkl 
+      tgt_lang: zh_CN
+    freeze_txt_embed: false
+    label_smoothing: 0.2
+    gls_eos: txt
+    overwrite_cfg:
+      attention_dropout: 0.1
+      dropout: 0.3
+    pretrained_model_name_or_path: pretrained_models/slt/mBart_zh/
+    load_ckpt:  experiments/outputs/SingleStream/csl-daily_g2t_best/ckpts/best.ckpt
+    freeze_decoder: false
+    avg_level: sentence
+  VLMapper:
+    freeze: false
+    type: embedding_fuse_share
+    FusionNet2:
+      choice: DSG
+      global_local_reverse: false
+      dropout: 0.0
+      AlignNet_choice: -1    
+  SSTNetwork:
+    SST_weight: 1.0
+    video_feature_dim: 1024
+    text_feature_dim: 1024
+    sd_num: 128
+    sd_dim: 128
+    SST_final_step: 17265
+    SST_mean_alpha: 0
+    SST_initial_std_dev: 0.5
+    SST_final_std_dev: 0.01
+    att_func_type: sparsemax
+    pool_type: mean
+    space_type: RandInitTrain
+    SST_warmup_step: 0
+
+  HyperSignNetwork:
+    gkl_func_type: gkl
+    kl_factor: 5.0
+    gkl_factor: 1.0
+    gkl_weight: 1.0
+    single_loss: false
+    cat_eos: false
+    mask_sign: false
+    load_head: false
+    unidirection_kl: false
+    variator_shared: true
+    embed_shared: true
+    rgd: true
+    kl_mixup: false
+    gkl_mixup: false
+    hidden_kl: false
+    mlp: false
+    bias: true
+    interpolate_type: feature_mixup
+    kl_warmup_step: 4000
+    gkl_warmup_step: 4000
+    sample_start_factor: 0.0
+    sample_end_factor: 0.0
+    sample_warmup_step: 0
+    mixup_start_factor: 0.0
+    mixup_end_factor: 0.0
+    mixup_warmup_step: 0
+    combine_type: residual
+    temperature: 1.0
+    gamma: 0.0
+    latent_dim: 64
+    variator_type: attention
+    variator_layers: 0
+    norm: postfix
+    dropout_rate: 1.0

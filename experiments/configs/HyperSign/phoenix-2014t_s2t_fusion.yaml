@@ -1,0 +1,189 @@
+task: S2T
+data:
+    input_data: videos
+    input_streams:
+        - rgb
+        - keypoint
+    dev: data/phoenix-2014t/phoenix-2014t_cleaned.dev
+    test: data/phoenix-2014t/phoenix-2014t_cleaned.test
+    train: data/phoenix-2014t/phoenix-2014t_cleaned.train
+    keypoint_file: data/phoenix-2014t/phoenix-2014t-keypoints.pkl
+    use_keypoints:
+        - pose 
+        - mouth_half
+        - hand
+        - face_others_1_3
+    dataset_name: phoenix-2014t
+
+    dev_head_rgb_input:  experiments/outputs/TwoStream/phoenix-2014t_video/extract_features/head_rgb_input/dev.pkl
+    test_head_rgb_input:  experiments/outputs/TwoStream/phoenix-2014t_video/extract_features/head_rgb_input/test.pkl
+    train_head_rgb_input: experiments/outputs/TwoStream/phoenix-2014t_video/extract_features/head_rgb_input/train.pkl
+    dev_head_keypoint_input:  experiments/outputs/TwoStream/phoenix-2014t_keypoint/extract_feature/head_keypoint_input/dev.pkl
+    test_head_keypoint_input:  experiments/outputs/TwoStream/phoenix-2014t_keypoint/extract_feature/head_keypoint_input/test.pkl
+    train_head_keypoint_input: experiments/outputs/TwoStream/phoenix-2014t_keypoint/extract_feature/head_keypoint_input/train.pkl
+   
+    level: word
+    max_sent_length: 400
+    txt_lowercase: true
+testing:
+    cfg:
+        recognition:
+            beam_size: 1
+        translation:
+            length_penalty: 1
+            max_length: 100
+            num_beams: 5
+training:
+    batch_size: 16
+    keep_last_ckpts: 2  # for ckpt average.
+    # s2g ckpts.
+    model_dir: experiments/outputs/TwoStream/phoenix-2014t_s2t_fusion
+    num_workers: 8
+    optimization:
+        betas:
+            - 0.9
+            - 0.998
+        learning_rate:
+            default: 0.0001
+            mapper: 0.002
+            translation: 1.0e-05
+        optimizer: Adam
+        scheduler: cosineannealing
+        t_max: 40
+        weight_decay: 0.001
+    overwrite: true
+    random_seed: 210
+    shuffle: true
+    total_epoch: 40
+    validation:
+        cfg:
+            recognition:
+                beam_size: 1
+            translation:
+                length_penalty: 1
+                max_length: 100
+                num_beams: 5
+        freq: 500
+        unit: epoch
+        valid_start_step: 4000
+        valid_start_epoch: 0
+    amp: true
+model:
+    mode: hyper
+    recognition_weight: 0.0
+    translation_weight: 1.0
+    RecognitionNetwork:
+        pretrained_path_rgb: experiments/outputs/TwoStream/phoenix-2014t_video/ckpts/best.ckpt
+        pretrained_path_keypoint: experiments/outputs/TwoStream/phoenix-2014t_keypointx/ckpts/best.ckpt
+        freeze: false
+        GlossTokenizer:
+            gloss2id_file: data/phoenix-2014t/gloss2ids_old.pkl
+        fuse_method: doublehead_fuse
+        s3d:
+            freeze_block: 1
+            pretrained_ckpt: pretrained_models/slt/s3ds_actioncls_ckpt  # Kinetics-400 and WLASL
+            use_block: 4
+        keypoint_s3d:
+            freeze_block: 0
+            in_channel: 79
+            pretrained_ckpt: pretrained_models/slt/s3ds_actioncls_ckpt
+            use_block: 4
+        visual_head:
+            freeze: false
+            ff_kernelsize:
+                - 3
+                - 3
+            ff_size: 2048
+            hidden_size: 512
+            input_size: 832
+            pe: true
+    TranslationNetwork:
+        GlossEmbedding:
+            freeze: false
+            gloss2embed_file: pretrained_models/slt/mBart_de/gloss_embeddings.bin
+        GlossTokenizer:
+            gloss2id_file: pretrained_models/slt/mBart_de/gloss2ids.pkl
+            src_lang: de_DGS
+        TextTokenizer:
+            pretrained_model_name_or_path: pretrained_models/slt/mBart_de
+            pruneids_file: pretrained_models/slt/mBart_de/map_ids.pkl
+            tgt_lang: de_DE
+        freeze_txt_embed: false
+        label_smoothing: 0.2
+        gls_eos: txt
+
+        overwrite_cfg:
+            attention_dropout: 0.1
+            dropout: 0.3
+        pretrained_model_name_or_path: pretrained_models/slt/mBart_de
+        from_scratch: false
+        validation_cfg:
+            length_penalty: 1
+            max_length: 100
+            num_beams: 5
+        avg_level: sentence  # ['sentence', 'token']
+        freeze_decoder: False
+        load_ckpt: experiments/outputs/SingleStream/phoenix-2014t_g2t/ckpts/best.ckpt
+
+    VLMapper:
+        freeze: false
+        type: fuse_projection_share
+        in_features: 512
+        multistream_fuse: empty
+        FusionNet2:
+            choice: DSG
+            global_local_reverse: false
+            dropout: 0.5
+            AlignNet_choice: -1
+
+    SSTNetwork:
+        SST_weight: 1
+        video_feature_dim: 1024
+        text_feature_dim: 1024
+        sd_num: 128
+        sd_dim: 128
+        SST_final_step: 17760
+        SST_mean_alpha: 0
+        SST_initial_std_dev: 0.5
+        SST_final_std_dev: 0.01
+        sd_temperature: 0.07
+        att_func_type: sparsemax
+        pool_type: mean
+        space_type: RandInitTrain
+        SST_warmup_step: 0
+    HyperSignNetwork:
+        gkl_func_type: gkl
+        kl_factor: 5.0
+        gkl_factor: 1.0
+        gkl_weight: 1.0
+        single_loss: false
+        cat_eos: false
+        mask_sign: false
+        load_head: false
+        unidirection_kl: false
+        variator_shared: true
+        embed_shared: true
+        rgd: true
+        kl_mixup: false
+        gkl_mixup: false
+        hidden_kl: false
+        mlp: false
+        bias: true
+        interpolate_type: feature_mixup
+        kl_warmup_step: 4000
+        gkl_warmup_step: 4000
+        sample_start_factor: 0.0
+        sample_end_factor: 0.0
+        sample_warmup_step: 0
+        mixup_start_factor: 0.0
+        mixup_end_factor: 0.0
+        mixup_warmup_step: 0
+        combine_type: residual
+        temperature: 1.0
+        gamma: 0.0
+        latent_dim: 64
+        variator_type: attention
+        variator_layers: 0
+        norm: middle
+        dropout_rate: 1.0
+    do_recognition: false
