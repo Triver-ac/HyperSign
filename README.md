@@ -6,7 +6,7 @@ HyperSign is built upon the robust foundation laid by [MMTLB](https://arxiv.org/
 
 ## Introduction
 Sign language is a visual language that conveys information through gestures and facial expressions. For the task of sign language translation, the fusion of RGB and keypoint information has been proven effective, but existing methods often use late fusion approaches, causing the dual streams to be decoded repeatedly, which makes it difficult to extract useful features based on the characteristics of different streams.This paper designs an early fusion method that uses hypernetworks to dynamically fuse dual-stream features, and employs a partial shortcut connection strategy to guide the gradual fusion of the dual streams. To bring the dual-stream features as close as possible for easier feature selection and fusion, we also explored various techniques, including self-distillation and SST contrastive learning. Experimental results show that the method proposed in this paper achieves state-of-the-art performance on two public datasets.
-![Detailed model framework of HyperSign](./figs/model.png)
+![Detailed model framework of HyperSign](./figs/model.png) 
 
 ## Performance
 
